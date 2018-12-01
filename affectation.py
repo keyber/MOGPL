@@ -2,44 +2,40 @@ from PIL import Image, ImageDraw
 from gurobipy import *
 import numpy as np
 
+#création du modèle gurobi
+m = Model("affectation")
+
+#désactive ses affichages
+m.Params.outPutFlag = 0
+
+
+#nombre de ville
 N=36
+
 #nom des villes
 names = np.empty((N,), dtype=object)
 
 #taille des villes
 pop = np.empty((N,), dtype=int)
 
-#matrice N*N des distances entre chaque couple ville ville
+#matrice N*N des distances entre chaque ville
 distVille = np.empty((N, N), dtype=float)
 
-#position des villes pour l'affichage (en pixel)
+#position des villes (pour l'affichage) (en pixel)
 affPos = np.empty((N, ), dtype=tuple)
 
 with open("distances92.txt") as f:
-    for i in range(N):
-        names[i]=f.readline()[:-1]
-        for j in range(N):
-            distVille[i][j]=float(f.readline())
+    for _i in range(N):
+        names[_i]= f.readline()[:-1]
+        for _j in range(N):
+            distVille[_i][_j]=float(f.readline())
 with open("populations92.txt") as f:
-    for i in range(N):
-        pop[i]=int(f.readline().split(',')[1])
+    for _i in range(N):
+        pop[_i]=int(f.readline().split(',')[1])
 with open("coordvilles92.txt") as f:
-    for i in range(N):
+    for _i in range(N):
         s = f.readline().split(',')[1:]
-        affPos[i] = (int(s[0]), int(s[1]))
-
-images=[]
-im = Image.open("92.png")
-draw = ImageDraw.Draw(im)
-for i in range(N):
-    draw.text(affPos[i],str(i),fill=0)
-images.append(im)
-
-
-#im.save("1", "PNG")
-images[0].save("1", format="GIF", loop=9999, duration=1000, save_all=True, append_images=images[1:])
-
-
+        affPos[_i] = (int(s[0]), int(s[1]))
 
 #population totale du territoire
 popTot = pop.sum()
@@ -47,71 +43,70 @@ popTot = pop.sum()
 #nombre de secteurs
 k = 3
 
-#
+#facteur de relaxation
 alpha = 0.1
 
-#
-gamma = (1+alpha)*popTot/k
-
-#
-secteurs = [0,2,5]
-
-#
-distSecteur = distVille[:, secteurs]
-
-#
-chosenPoints = [[0,7,13],[0,12,13,21],[0,12,29,31,33]]
+#gamma
+popMax = (1+alpha)*popTot//k
 
 
 
-nbcont = 4
-nbvar = 2
+def draw():
+    images=[]
+    im = Image.open("92.png")
+    dr = ImageDraw.Draw(im)
+    for i in range(N):
+        dr.text(affPos[i],str(i),fill=0)
+    images.append(im)
+    
+    
+    #im.save("1", "PNG")
+    images[0].save("1", format="GIF", loop=9999, duration=1000,
+                   save_all=True, append_images=images[1:])
 
-lignes = range(nbcont)
-colonnes = range(nbvar)
+def question1():
+    #on fixe quelles villes sont les points d'accès (dépend de k)
+    chosenPoints = [[],[0],[0,1],[0,7,13],[0,12,13,21],[0,12,29,31,33]][k]
+    
+    #extrait la matrice des distances des villes vers les points d'accès
+    distSecteur = distVille[:, chosenPoints]
 
-# Matrice des contraintes
-a = [[1, 0],
-     [0, 1],
-     [1, 2],
-     [2, 1]]
-
-# Second membre
-b = [8, 6, 15, 18]
-
-# Coefficients de la fonction objectif
-c = [4, 10]
-
-m = Model("mogplex")
-
-# declaration variables de decision
-x = []
-for i in colonnes:
-    x.append(m.addVar(vtype=GRB.CONTINUOUS, lb=0, name="x%d" % (i + 1)))
-
-# maj du modele pour integrer les nouvelles variables
-m.update()
-
-obj = LinExpr();
-obj = 0
-for j in colonnes:
-    obj += c[j] * x[j]
-
-# definition de l'objectif
-m.setObjective(obj, GRB.MAXIMIZE)
-
-# Definition des contraintes
-for i in lignes:
-    m.addConstr(quicksum(a[i][j] * x[j] for j in colonnes) <= b[i], "Contrainte%d" % i)
-
-# Resolution
-m.optimize()
-
-print("")
-print('Solution optimale:')
-for j in colonnes:
-    print('x%d' % (j + 1), '=', x[j].x)
-print("")
-print('Valeur de la fonction objectif :', m.objVal)
+    lignes = range(N)
+    colonnes = range(k)
+    
+    # declaration variables de decision
+    x = []
+    for i in lignes:
+        x.append([])
+        for j in colonnes:
+            x[i].append(m.addVar(vtype=GRB.BINARY, name="ville%dsecteur%d" % (i, j)))
+    m.update()
+    
+    # definition de l'objectif
+    obj = LinExpr()
+    for i in lignes:
+        for j in colonnes:
+            obj += distSecteur[i][j] * x[i][j]
+    m.setObjective(obj, GRB.MINIMIZE)
+    
+    # Definition des contraintes
+    #une ville est dans un secteur exactement
+    for i in lignes:
+        m.addConstr(quicksum(x[i][j] for j in colonnes) == 1, "C1Secteur%d" % i)
+    
+    #un secteur ne couvre pas plus que gamma personnes
+    for j in colonnes:
+        m.addConstr(quicksum(x[i][j]*pop[i] for i in lignes) <= popMax, "CPopMax%d" % j)
+    
+    # Resolution
+    m.optimize()
+    
+    print("")
+    print('Solution optimale:')
+    for i in lignes:
+        print("ville",i,"secteur",max(colonnes, key=lambda j:x[i][j].x))
+    print("")
+    print('Valeur de la fonction objectif :', m.objVal)
 
 
+question1()
