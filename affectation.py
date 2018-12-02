@@ -8,6 +8,9 @@ m = Model("affectation")
 #désactive ses affichages
 m.Params.outPutFlag = 0
 
+#représentations graphiques des solutions
+images = []
+
 
 #nombre de ville
 N=36
@@ -24,6 +27,7 @@ distVille = np.empty((N, N), dtype=float)
 #position des villes (pour l'affichage) (en pixel)
 affPos = np.empty((N, ), dtype=tuple)
 
+#lecture fichiers
 with open("distances92.txt") as f:
     for _i in range(N):
         names[_i]= f.readline()[:-1]
@@ -40,46 +44,49 @@ with open("coordvilles92.txt") as f:
 #population totale du territoire
 popTot = pop.sum()
 
-#nombre de secteurs
-k = 3
-
-#facteur de relaxation
-alpha = 0.1
-
-#gamma
-popMax = (1+alpha)*popTot//k
+def gamma(alpha, k):
+    """nombre maximal de personnes couvertes par un secteur"""
+    return (1+alpha)*popTot//k
 
 
-
-def draw():
-    images=[]
+def draw(solSect, solVille, varNames, varVals):
+    """crée la représentation graphique de la solution"""
+    #une couleur par secteur
+    colors = [(255,0,0),(0,255,0),(0,0,255), (128,0,0), (255,0,255), (255,255,0)]
+    
+    #repart de l'image initiale pour chaque solution
     im = Image.open("92.png")
     dr = ImageDraw.Draw(im)
+    
+    #trace les lignes du secteur vers la ville couverte
     for i in range(N):
-        dr.text(affPos[i],str(i),fill=0)
+        dr.line((affPos[i],affPos[solVille[i]]), fill=colors[solSect[i]])
+        
+    #affiche les variables
+    for i, (name, value) in enumerate(zip(varNames, varVals)):
+        dr.text((100,500+15*i), str.ljust(name,5) + str(value), fill=0)
+    
+    #ajoute l'image à la liste pour la création du gif
     images.append(im)
     
-    
-    #im.save("1", "PNG")
-    images[0].save("1", format="GIF", loop=9999, duration=1000,
-                   save_all=True, append_images=images[1:])
 
-def question1():
+def question1(k, alpha):
+    popMax = gamma(alpha, k)
+    
     #on fixe quelles villes sont les points d'accès (dépend de k)
-    chosenPoints = [[],[0],[0,1],[0,7,13],[0,12,13,21],[0,12,29,31,33]][k]
+    pointsDacces = np.array([[],[0],[0,1],[1,8,14],[1,13,14,22],[1,13,30,32,34]][k])
     
     #extrait la matrice des distances des villes vers les points d'accès
-    distSecteur = distVille[:, chosenPoints]
+    distSecteur = distVille[:, pointsDacces]
 
     lignes = range(N)
     colonnes = range(k)
     
     # declaration variables de decision
-    x = []
+    x = np.empty((N,k), object)
     for i in lignes:
-        x.append([])
         for j in colonnes:
-            x[i].append(m.addVar(vtype=GRB.BINARY, name="ville%dsecteur%d" % (i, j)))
+            x[i][j] = m.addVar(vtype=GRB.BINARY, name="ville%dsecteur%d" % (i, j))
     m.update()
     
     # definition de l'objectif
@@ -87,6 +94,7 @@ def question1():
     for i in lignes:
         for j in colonnes:
             obj += distSecteur[i][j] * x[i][j]
+
     m.setObjective(obj, GRB.MINIMIZE)
     
     # Definition des contraintes
@@ -98,15 +106,64 @@ def question1():
     for j in colonnes:
         m.addConstr(quicksum(x[i][j]*pop[i] for i in lignes) <= popMax, "CPopMax%d" % j)
     
-    # Resolution
+    # Résolution
     m.optimize()
     
-    print("")
-    print('Solution optimale:')
-    for i in lignes:
-        print("ville",i,"secteur",max(colonnes, key=lambda j:x[i][j].x))
-    print("")
-    print('Valeur de la fonction objectif :', m.objVal)
+    #secteur associé à chaque ville
+    solSect = [max(colonnes, key=lambda j:x[i][j].x) for i in lignes]
+    
+    #ville associée à chaque ville
+    solVille = pointsDacces[solSect]
+    
+    #valeur de l'objectif (tronquée)
+    val = int(m.objVal)
+    
+    #distance maximale (valeur pour la ville la moins bien servie)
+    dmax= max(sum(distSecteur[i][j] * x[i][j].x for j in range(k)) for i in lignes)
+    
+    #dessine
+    draw(solSect, solVille,["k","a","val","dmax"], [k,alpha,val,dmax])
+    
+    print("k=",k,"a=",alpha, "\tvaleur:", val, "\tdmax:", dmax)
+    
+    return val
+
+def saveGif(name, kList, aList):
+    #sauvegarde les images une par une
+    cpt=0
+    for k in kList:
+        for a in aList:
+            images[cpt].save((name+"k"+str(k)+"_a"+str(a)), "PNG")
+            cpt+=1
+    
+    #crée aussi un gif
+    images[0].save(name[-2]+".gif", format="GIF", loop=9999,
+                   duration=[4000]+[2000]*(len(images)-2)+[4000],
+                   save_all=True, append_images=images[1:])
+
+def ex1():
+    kList=[3,4,5]
+    aList=[.1,.2]
+    #nombre de secteurs
+    for k in kList:
+        #facteur de relaxation
+        for a in aList:
+            question1(k, a)
+    saveGif("output/ex1/", kList, aList)
+    
+def ex2():
+    kList=[3,4,5]
+    aList=[.1,.2]
+    #nombre de secteurs
+    for k in kList:
+        #facteur de relaxation
+        for a in aList:
+            question2(k, a)
+    saveGif("output/ex2/", kList, aList)
+    
+    
+def main():
+    ex1()
 
 
-question1()
+main()
