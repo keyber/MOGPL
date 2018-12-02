@@ -2,13 +2,6 @@ from PIL import Image, ImageDraw
 from gurobipy import *
 import numpy as np
 
-#création du modèle gurobi
-m = Model("affectation")
-
-#désactive ses affichages
-m.Params.outPutFlag = 0
-
-
 #nombre de ville
 N=36
 
@@ -69,7 +62,7 @@ def draw(listIm, solSect, solVille, varNames, varVals):
 #pour q1 et q2 on fixe quelles villes sont les points d'accès (dépend de k)
 pointsDacces_k = [[], [0], [0, 1], [1, 8, 14], [1, 13, 14, 22], [1, 13, 30, 32, 34]]
 
-def question1(k, alpha, listIm=None):
+def optimizeMean(m:Model, k:int, alpha:float, listIm=None):
     popMax = gamma(alpha, k)
     
     pointsDacces = np.array(pointsDacces_k[k])
@@ -127,8 +120,7 @@ def question1(k, alpha, listIm=None):
     
     return val
 
-
-def question2(k, alpha, f_optf, listeIm=None):
+def optimizeMax(m:Model, k:int, alpha:float, f_optf:float, listeIm=None):
     """valq1 pour affichage du prix de l'équité"""
     popMax = gamma(alpha, k)
 
@@ -175,7 +167,7 @@ def question2(k, alpha, f_optf, listeIm=None):
     
     # Résolution
     m.optimize()
-    
+
     #secteur associé à chaque ville
     solSect = [max(colonnes, key=lambda j: x[i][j].x) for i in lignes]
     
@@ -189,7 +181,7 @@ def question2(k, alpha, f_optf, listeIm=None):
     dmax = max(sum(distSecteur[i][j] * x[i][j].x for j in range(k)) for i in lignes)
     
     f_optg = sum(distVille[i][solVille[i]] for i in lignes)
-    prix_equite = round(1 - f_optf/f_optg, 1)
+    prix_equite = round(100 - 100*f_optf/f_optg, 1)
     
     if listeIm is not None:
         #dessine
@@ -225,19 +217,31 @@ def ex1():
     for k in kList:
         #facteur de relaxation
         for a in aList:
-            question1(k, a, images)
-    saveGif(images, "output/ex1/", kList, aList)
+            #création d'un modèle
+            m = Model()
+            #désactive ses affichages
+            m.Params.outPutFlag = 0
     
+            optimizeMean(m, k, a, images)
+    saveGif(images, "output/ex1/", kList, aList)
+
 def ex2():
     images = []
     kList=[3,4,5]
     aList=[.1,.2]
     for k in kList:
         for a in aList:
-            question2(k, a, question1(k,a), images)
+            m=Model()
+            m.Params.outPutFlag=0
+            v=optimizeMean(m,k,a)
+            m=Model()
+            m.Params.outPutFlag=0
+            optimizeMax(m,k, a, v, images)
     saveGif(images, "output/ex2/", kList, aList)
-    
-    
+
+def ex3():
+    pass
+
 def main():
     ex2()
 
