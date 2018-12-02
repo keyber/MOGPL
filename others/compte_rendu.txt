@@ -1,0 +1,77 @@
+CONSTANTES DANS UNE INSTANCE DU PROBLEME
+n : nombre de villes
+
+distVilleVille : matrice des distances entre i et j (connues pour tout i,j entre 1 et n).
+(Les distances ne sont pas symétriques)
+
+v : tableau des populations (connues pour tout i entre 1 et n)  
+
+V : population totale = somme des vi
+
+k : nombre de secteurs < n
+
+gamma avec a=0 il faudrait que les k secteurs ne couvrent pas une population dépassant V/k.
+il faut que toutes les villes soient couvertes donc chaque secteur devrait couvrir exactement V/k.
+avec a non nul, on autorise les secteurs à couvrir a*V/k persones supplémentaires, soit une augmentation proportionnelle à a (de 100*a pourcent).
+Il n'y a pas forcément de solution réalisable si a est trop petit.
+
+La distance entre la ville i et son point d'accès au service est obtenue en calculant
+somme sur 1<=j<=n des d_ij * x_ij
+
+
+(QUESTION 1)
+CONSTANTES
+distVilleSecteur : matrice n*k des distances entre la ville i et la ville correspondant au secteur d'indice j.
+
+VARIABLES
+Xij matrice n*k binaire dont les coefficients valent 1 si la ville i appartient au secteur j
+
+CONTRAINTES
+Une ville est dans un seul secteur :
+qqsoit i, somme sur j des x_ij = 1
+
+Un secteur ne couvre pas plus que gamma personnes :
+qqsoit j, somme sur i des x_ij*v_i <= gamma
+
+OBJECTIF
+minimiser f(x) 
+ = somme des distances au point d'accès
+ = somme sur i de somme sur j de distVilleSecteur_ij*x_ij
+
+
+
+(QUESTION 2)
+Le premier terme de la somme représente la distance pour le maire le moins bien servi.
+Avec epsilon suffisament petit, le deuxième terme permet, pour deux solutions ayant la même évaluation de préférer celle qui minimise la moyenne des distances.
+
+OBJECTIF
+minimiser g(x) =  max sur i de somme sur j de distVilleSecteur_ij
+   + epsilon * (somme sur i de somme sur j de distVilleSecteur_ij)
+
+on représente "max sur i de somme sur j de distVilleSecteur_ij" par une variable maxsum associée aux contraintes maxsum >= somme sur j de distVilleSecteur_ij pour tout i
+
+
+(QUESTION 3)
+VARIABLES
+Xij matrice n*n binaire dont les coefficients valent 1 si le point d'accès de la ville i est la ville j.
+
+CONTRAINTES
+Il y a exactement k point d'accès:
+Une ville j est un point d'accès si il y a au moins un coefficient à 1 dans la colonne j (ils sont à 0 sinon).
+somme sur j de max sur i de x_ij = k
+on représente "max sur i de x_ij = k" par des variables m_i binaires associées au contraintes m_i >= x_ij pour tout i et j
+
+De même que pour 1) :
+Une ville est dans un seul secteur :
+qqsoit i, somme sur j des x_ij = 1
+
+Un secteur ne couvre pas plus que gamma personnes :
+qqsoit j, somme sur i des x_ij*v_i <= gamma
+
+De même que pour 2) : 
+qqsoit i, maxsum >= somme sur j de distVilleVille_ij
+
+
+OBJECTIF
+minimiser g(x) =  maxsum + epsilon * (somme sur i de somme sur j de distVilleVille_ij)
+
