@@ -8,9 +8,6 @@ m = Model("affectation")
 #désactive ses affichages
 m.Params.outPutFlag = 0
 
-#représentations graphiques des solutions
-images = []
-
 
 #nombre de ville
 N=36
@@ -49,7 +46,7 @@ def gamma(alpha, k):
     return (1+alpha)*popTot//k
 
 
-def draw(solSect, solVille, varNames, varVals):
+def draw(listIm, solSect, solVille, varNames, varVals):
     """crée la représentation graphique de la solution"""
     #une couleur par secteur
     colors = [(255,0,0),(0,255,0),(0,0,255), (128,0,0), (255,0,255), (255,255,0)]
@@ -67,23 +64,24 @@ def draw(solSect, solVille, varNames, varVals):
         dr.text((100,500+15*i), str.ljust(name,5) + str(value), fill=0)
     
     #ajoute l'image à la liste pour la création du gif
-    images.append(im)
-    
+    listIm.append(im)
 
-def question1(k, alpha):
+#pour q1 et q2 on fixe quelles villes sont les points d'accès (dépend de k)
+pointsDacces_k = [[], [0], [0, 1], [1, 8, 14], [1, 13, 14, 22], [1, 13, 30, 32, 34]]
+
+def question1(k, alpha, listIm=None):
     popMax = gamma(alpha, k)
     
-    #on fixe quelles villes sont les points d'accès (dépend de k)
-    pointsDacces = np.array([[],[0],[0,1],[1,8,14],[1,13,14,22],[1,13,30,32,34]][k])
+    pointsDacces = np.array(pointsDacces_k[k])
     
     #extrait la matrice des distances des villes vers les points d'accès
     distSecteur = distVille[:, pointsDacces]
-
+    
     lignes = range(N)
     colonnes = range(k)
     
     # declaration variables de decision
-    x = np.empty((N,k), object)
+    x = np.empty((N, k), object)
     for i in lignes:
         for j in colonnes:
             x[i][j] = m.addVar(vtype=GRB.BINARY, name="ville%dsecteur%d" % (i, j))
@@ -94,7 +92,7 @@ def question1(k, alpha):
     for i in lignes:
         for j in colonnes:
             obj += distSecteur[i][j] * x[i][j]
-
+    
     m.setObjective(obj, GRB.MINIMIZE)
     
     # Definition des contraintes
@@ -104,66 +102,143 @@ def question1(k, alpha):
     
     #un secteur ne couvre pas plus que gamma personnes
     for j in colonnes:
-        m.addConstr(quicksum(x[i][j]*pop[i] for i in lignes) <= popMax, "CPopMax%d" % j)
+        m.addConstr(quicksum(x[i][j] * pop[i] for i in lignes) <= popMax, "CPopMax%d" % j)
     
     # Résolution
     m.optimize()
     
     #secteur associé à chaque ville
-    solSect = [max(colonnes, key=lambda j:x[i][j].x) for i in lignes]
+    solSect = [max(colonnes, key=lambda j: x[i][j].x) for i in lignes]
+    
+    #ville associée à chaque ville
+    solVille = pointsDacces[solSect]
+    
+    #valeur de l'objectif
+    val = m.objVal
+    
+    #distance maximale (valeur pour la ville la moins bien servie)
+    dmax = max(sum(distSecteur[i][j] * x[i][j].x for j in range(k)) for i in lignes)
+    
+    if listIm is not None:
+        #dessine
+        draw(listIm, solSect, solVille, ["k", "a", "val", "dmax"], [k, alpha, round(val,1), dmax])
+    
+    print("k=", k, "a=", alpha, "\tvaleur:", round(val,3), "\tdmax:", dmax)
+    
+    return val
+
+
+def question2(k, alpha, f_optf, listeIm=None):
+    """valq1 pour affichage du prix de l'équité"""
+    popMax = gamma(alpha, k)
+
+    pointsDacces = np.array(pointsDacces_k[k])
+
+    #extrait la matrice des distances des villes vers les points d'accès
+    distSecteur = distVille[:, pointsDacces]
+    
+    lignes = range(N)
+    colonnes = range(k)
+    
+    # declaration variables de decision
+    x = np.empty((N, k), object)
+    maxDist = m.addVar(vtype=GRB.CONTINUOUS, name="maxDist")
+    for i in lignes:
+        for j in colonnes:
+            x[i][j] = m.addVar(vtype=GRB.BINARY, name="ville%dsecteur%d" % (i, j))
+    m.update()
+    
+    # definition de l'objectif
+    obj = LinExpr()
+    for i in lignes:
+        for j in colonnes:
+            obj += distSecteur[i][j] * x[i][j]
+    obj *= 10**-6
+    
+    obj += maxDist
+    
+    m.setObjective(obj, GRB.MINIMIZE)
+    
+    # Definition des contraintes
+    #une ville est dans un secteur exactement
+    for i in lignes:
+        m.addConstr(quicksum(x[i][j] for j in colonnes) == 1, "C1Secteur%d" % i)
+    
+    #un secteur ne couvre pas plus que gamma personnes
+    for j in colonnes:
+        m.addConstr(quicksum(x[i][j] * pop[i] for i in lignes) <= popMax, "CPopMax%d" % j)
+    
+    #maxDist>=dist
+    for i in lignes:
+        m.addConstr(maxDist >= quicksum(x[i][j] * distSecteur[i][j] for j in colonnes), "maxDist%d" % j)
+    
+    
+    # Résolution
+    m.optimize()
+    
+    #secteur associé à chaque ville
+    solSect = [max(colonnes, key=lambda j: x[i][j].x) for i in lignes]
     
     #ville associée à chaque ville
     solVille = pointsDacces[solSect]
     
     #valeur de l'objectif (tronquée)
-    val = int(m.objVal)
+    val = m.objVal
     
     #distance maximale (valeur pour la ville la moins bien servie)
-    dmax= max(sum(distSecteur[i][j] * x[i][j].x for j in range(k)) for i in lignes)
+    dmax = max(sum(distSecteur[i][j] * x[i][j].x for j in range(k)) for i in lignes)
     
-    #dessine
-    draw(solSect, solVille,["k","a","val","dmax"], [k,alpha,val,dmax])
+    f_optg = sum(distVille[i][solVille[i]] for i in lignes)
+    prix_equite = round(1 - f_optf/f_optg, 1)
     
-    print("k=",k,"a=",alpha, "\tvaleur:", val, "\tdmax:", dmax)
+    if listeIm is not None:
+        #dessine
+        draw(listeIm, solSect, solVille, ["k", "a", "val", "dmax", "prix équité"],
+             [k, alpha, round(val,1), dmax, prix_equite])
+    
+    print("k=", k, "a=", alpha, "\tvaleur:", round(val,3), "\tdmax:", dmax, "\tprix équité:", prix_equite)
     
     return val
 
-def saveGif(name, kList, aList):
+
+def saveGif(listIm, name, kList, aList):
     #sauvegarde les images une par une
     cpt=0
     for k in kList:
         for a in aList:
-            images[cpt].save((name+"k"+str(k)+"_a"+str(a)), "PNG")
+            listIm[cpt].save((name + "k" + str(k) + "_a" + str(a)), "PNG")
             cpt+=1
     
     #crée aussi un gif
-    images[0].save(name[-2]+".gif", format="GIF", loop=9999,
-                   duration=[4000]+[2000]*(len(images)-2)+[4000],
-                   save_all=True, append_images=images[1:])
+    listIm[0].save(name[-2] +".gif", format="GIF", loop=9999,
+                   duration=[4000] + [2000] * (len(listIm) - 2) + [4000],
+                   save_all=True, append_images=listIm[1:])
 
 def ex1():
+    #représentations graphiques des solutions
+    images = []
+    
     kList=[3,4,5]
     aList=[.1,.2]
+    
     #nombre de secteurs
     for k in kList:
         #facteur de relaxation
         for a in aList:
-            question1(k, a)
-    saveGif("output/ex1/", kList, aList)
+            question1(k, a, images)
+    saveGif(images, "output/ex1/", kList, aList)
     
 def ex2():
+    images = []
     kList=[3,4,5]
     aList=[.1,.2]
-    #nombre de secteurs
     for k in kList:
-        #facteur de relaxation
         for a in aList:
-            question2(k, a)
-    saveGif("output/ex2/", kList, aList)
+            question2(k, a, question1(k,a), images)
+    saveGif(images, "output/ex2/", kList, aList)
     
     
 def main():
-    ex1()
-
+    ex2()
 
 main()
