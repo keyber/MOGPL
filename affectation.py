@@ -114,7 +114,7 @@ def _optimizeFixed(MINMAX, pointsDacces, k, alpha, listIm, f_optf=0):
             obj += distSecteur[i][j] * x[i][j]
     
     if MINMAX:
-        obj *= 1e-6
+        obj *= 1e-4
         obj += maxDist
     
     m.setObjective(obj, GRB.MINIMIZE)
@@ -135,8 +135,8 @@ def _optimizeFixed(MINMAX, pointsDacces, k, alpha, listIm, f_optf=0):
                         "maxDist%d" % i)
 
     #------------------RESOLUTION------------------
-    print("nb variables", len(m.getVars()), " contraintes", len(m.getConstrs()))
     m.optimize()
+    print("nb variables", len(m.getVars()), " contraintes", len(m.getConstrs()))
     
     #secteur associé à chaque ville
     solSect = [max(colonnes, key=lambda _j: x[i][_j].X) for i in lignes]
@@ -162,7 +162,7 @@ def _optimizeFixed(MINMAX, pointsDacces, k, alpha, listIm, f_optf=0):
     #-----------------DESSINE------------------
     if listIm is not None:
         nomVars = ["k", "a", "val", "dmax"]
-        valVars = [k, alpha, round(val,1), dmax]
+        valVars = [k, alpha, round(val,4), dmax]
         if MINMAX:
             nomVars.append("prix équité")
             valVars.append(prix_equite)
@@ -212,7 +212,7 @@ def _optimizeFree(MINMAX, k, alpha, listIm, f_optf=0):
             obj += distVille[i][j] * whatSector[i][j]
     
     if MINMAX:
-        obj *= 1e-6
+        obj *= 1e-4
         obj += maxDist
     
     m.setObjective(obj, GRB.MINIMIZE)
@@ -243,7 +243,6 @@ def _optimizeFree(MINMAX, k, alpha, listIm, f_optf=0):
                         "maxDist%d" % i)
 
     #--------------------RESOLUTION--------------------
-    print("nb variables", len(m.getVars()), " contraintes", len(m.getConstrs()))
     m.optimize()
     
     #ville associée à chaque ville
@@ -259,7 +258,9 @@ def _optimizeFree(MINMAX, k, alpha, listIm, f_optf=0):
     indSecteur = [villeToIndSecteur[v] for v in numVille]
 
     #-----------------PRIX EQUITE------------------
-    print("k=", k, "a=", alpha, "\tvaleur:", round(val, 3), "\tdmax:", dmax)
+    print("free" +("max" if MINMAX else "mean"), "k=", k, "a=", alpha, "\tvaleur:", val, "\tdmax:", dmax)
+    print("nb variables", len(m.getVars()), " contraintes", len(m.getConstrs()))
+    
     if MINMAX:
         f_optg = sum(distVille[i][numVille[i]] for i in lignes)
         prix_equite = round(100 - 100 * f_optf / f_optg, 1)
@@ -268,7 +269,7 @@ def _optimizeFree(MINMAX, k, alpha, listIm, f_optf=0):
     if listIm is not None:
         #dessine
         nameVars = ["k", "a", "val", "dmax"]
-        valVars = [k, alpha, round(val, 1), dmax]
+        valVars = [k, alpha, round(val, 4), dmax]
         if MINMAX:
             nameVars.append("prix équité")
             valVars.append(prix_equite)
@@ -304,6 +305,7 @@ def ex12():
             
             #calcul du max minimal
             optimizeFixedMax(pointsDacces_k[k],k, a, imagesMax, v)
+            print()
     
     #exporte les solutions trouvées
     saveGif(imagesMean, "fixed_mean", kList, aList)
@@ -319,6 +321,7 @@ def ex3():
         for a in aList:
             v = optimizeFreeMean(k, a, imagesMean)
             optimizeFreeMax(k, a, imagesMax, v)
+            print()
     saveGif(imagesMean, "free_mean", kList, aList)
     saveGif(imagesMax, "free_max", kList, aList)
 
