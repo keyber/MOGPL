@@ -1,0 +1,155 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage[T1]{fontenc}
+\usepackage{float}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+%\usepackage{amsmath}
+
+\title{Rapport de Projet}					
+\author{Jonathan MORENO \& Keyvan BEROUKHIM}								 
+\date{Décembre 2018}
+
+\makeatletter
+\let\thetitle\@title
+\let\theauthor\@author
+\let\thedate\@date
+\makeatother
+
+\begin{document}
+\begin{titlepage}
+	\centering
+    \vspace{0.5 cm}
+    \includegraphics[scale = 1]{logo.png}\\[1.5 cm]
+    \textbf{\LARGE MOGPL}\\[0.5 cm]
+    \Large{Modélisations, Optimisation, Graphes\\et Programmation Linéaire}
+    \large{[NW411]}\\[0.5 cm]
+	\rule{\linewidth}{0.2 mm} \\[0.4 cm]
+	{\Huge{\bfseries \thetitle}}\\
+	\rule{\linewidth}{0.2 mm} \\[1.5 cm]
+	
+	\begin{minipage}{0.4\textwidth}
+		\begin{flushleft} \large
+			\emph{Étudiants:}\\
+			Jonathan MORENO\\
+			Keyvan BEROUKHIM
+			\end{flushleft}
+			\end{minipage}~
+			\begin{minipage}{0.4\textwidth}
+			\begin{flushright} \large
+			\emph{Numéros:} \\
+			*******\\
+			3506789
+		\end{flushright}
+	\end{minipage}\\[2 cm]
+	{\large \thedate}\\[2 cm]
+	\vfill
+\end{titlepage}
+
+\section{Présentation du problème}
+\subsection{Introduction}
+Nous cherchons ici à résoudre un problème de localisation et d'affectation de ressources. Étant donné un ensemble de $n$ villes et un nombre de ressource $k$, on cherche à déterminer où positionner les ressources et à quelle ressource affecter chaque ville.
+\\\\
+Il faut choisir $k$ localisations parmi $n$ puis une affectation parmi $k$ pour chaque ville. Le nombre de combinaisons théoriques est donc ${n\choose k} k^n$.
+\\
+Avec $n=36$, on obtient :
+\[\begin{array}{|l|c|c|c|c|c|}
+\hline
+\mbox{k}            &  1 &       2 &       3 &       4 &       5 \\
+\hline
+\mbox{combinaisons} & \: 36 \: & 10^{13} & 10^{21} & 10^{26} & 10^{31} \\
+\hline
+\end{array}\]
+Le nombre de combinaison augmente exponentiellement avec $k$, Dès $k=2$, il n'est pas viable d'énumérer et d'évaluer toutes les combinaisons possibles.
+\\\\
+Afin de répondre au problème, nous le modélisons par un \textbf{problème linéaire}. Ce problème est résolu en python avec l'aide du solveur de programme linéaire Gurobi.
+
+\subsection{Modélisation}
+Nous travaillons ici avec la carte des 36 plus grandes villes du département 92. On a donc le nombre de villes $n=36$.
+\\
+Une contrainte du problème est que la population totale couverte par une ressource ne doit pas être trop grande. La population maximale couverte par une ressource est définie par
+$\gamma = \frac {1+\alpha} {k} \: V$.
+\\
+$V$ étant la somme des populations de chaque villes.
+\\
+Pour $\alpha=0$, il faudrait que les k secteurs ne couvrent pas une population dépassant V/k. Toutes les villes doivent être couvertes donc chaque secteur devrait couvrir exactement V/k.
+\\
+Avec $\alpha$ non nul, on autorise les secteurs à couvrir $\alpha \: V/k$ personnes supplémentaires, soit une augmentation proportionnelle à $\alpha$.
+\\
+On peut remarquer qu'il n'y a pas forcément de solution réalisable si $\alpha$ est trop petit.
+\\\\
+Le nombre de ressources $k$ et le facteur de relaxation $\alpha$ sont les paramètres d'instance du problème.
+\\\\
+Le coût d'affectation d'une ville à une ressource est matérialisé par la distance qui les sépare. La matrice des distances D est connue pour tout i, j entre 1 et n (on remarque que les distances ne sont pas forcément symétriques).
+\\\\
+Dans la suite du document, $X$ représentera la matrice des variables d'affectation, $i$ l'indice d'une ville et $j$ l'indice d'une ressource. $X_{ij}$ vaut 1 si la ville $i$ s'approvisionne en $j$, et 0 sinon.
+\\
+La distance entre la ville $i$ et son point d'accès au service est obtenue en calculant :
+\[d(i) = \sum_j {D_{ij} X_{ij}}\]
+Afin qu'une ville soit dans un unique secteur, on ajoute les contraintes :
+\[\forall i \:\: \sum_j X_{ij} = 1\]
+Afin que la population couverte par la ressource j soit inférieure à $\gamma$, on ajoute les contraintes :
+\[\forall j \:\: \sum_i V_i \: X_{ij} \leq \gamma\]
+
+
+
+\section{Minimisation de la moyenne}
+Le premier problème que l'on se pose est de fixer à la main les $k$ secteurs et de déterminer les affectations minimisant la $moyenne$ des distances.
+$X$ est donc une matrice binaire de taille $n\:x\:k$. Minimiser la moyenne des distances est équivalent à minimiser la somme des distances, la fonction objectif est donc :
+\[f(X) = \sum_i \sum_j D_{ij} \: X_{ij} \]
+Une fois l'affectation optimale calculée, on calcule la distance maximale entre une ville et sa ressource par la formule :
+\[d_{max} = \max_i \sum_j D_{ij} X_{ij}\]
+
+%images ex1
+\begin{minipage}{\textwidth}
+IMAGES EX1.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.5\textwidth]{Solutions/fixed_meank3_a1.png}
+\caption{TITRE}
+\end{figure}
+TEXTE.
+\centering
+\begin{figure}[H]
+\includegraphics[width=0.5\textwidth]{Solutions/fixed_meank3_a2.png}
+\caption{TITRE}
+{\footnotesize PETIT TEXTE.\par}
+\end{figure}
+\end{minipage}
+
+
+\pagebreak
+
+\section{Minimisation de la plus grande distance}
+Le deuxième problème diffère du premier seulement au niveau de la fonction objectif, on cherche ici à minimiser la plus grande distance :
+\[g(X) = \max_i \sum_j D_{ij} X_{ij} \:\: + \epsilon f(X)\]
+Le premier terme de la somme représente la distance pour le maire le moins bien servi.
+Avec epsilon suffisamment petit, le deuxième terme permet, pour deux solutions ayant la même évaluation de préférer celle qui minimise la moyenne des distances.
+\\
+Pour représenter le max, on ajoute une variable $d_{max}$ réelle et les contraintes :
+\[\forall i \:\: d_{max} \geq \sum_j D_{ij}X_{ij}\]
+Le prix de l'équité est défini par :
+\[PE = 1 - \frac{f(x^*_f)}{f(x^*_g)}\]
+Par définition de $x^*_f$, $f(x^*_g) \leq f(x^*_f)$. Le prix de l'équité est donc bien positif.
+
+IMAGES EX 2
+
+\section{Détermination des localisations optimales}
+Dans le troisième problème, la localisation des ressources n'est pas fixée.
+$X$ est donc ici une matrice $n\:x\:n$ où $X_{ij}$ vaut 1 si la ville $i$ s'approvisionne dans la ville $j$.
+Une ville j est un point d'accès si il y a au moins un coefficient à 1 dans la colonne j, on représente cela par des variables binaires égales au maximum de la colonne :
+\[\forall j \:\: isSector_j = \max_i X_{ij}\]
+La présence d'exactement $k$ point d'accès est représentée par la contrainte :
+\[\sum_j isSector_j = k\]
+On conserve aussi les contraintes et la fonction objectif du problème précédent.
+
+IMAGES EX 3
+
+%\section{Conclusion}
+La modélisation du problème en programme linéaire a pu se faire de manière relativement simple, et le nombre de variables et de contraintes obtenues est en $O(n^2)$. Quels que soient les paramètres, le solveur résout le problème en un temps négligeable. La modélisation du problème en un problème linéaire se révèle donc très opportune.
+
+
+\end{document}
+

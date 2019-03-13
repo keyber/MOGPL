@@ -1,9 +1,25 @@
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from gurobipy import *
 import numpy as np
+import sys
+import os
+
+if len(sys.argv)==4:
+    #nom des fichiers à lire
+    fname=sys.argv[1]
+    #quelles questions effectuer
+    mode = [int(sys.argv[2]),int(sys.argv[3])]
+else:
+    fname="92"
+    mode = [1,1]
+
+fnametxt=fname+".txt"
 
 #nombre de ville
-N=36
+N=0
+with open("villes"+fnametxt) as _f:
+    for _lines in _f:
+        N+=1
 
 #nom des villes
 names = np.empty((N,), dtype=object)
@@ -17,19 +33,21 @@ distVille = np.empty((N, N), dtype=float)
 #position des villes (pour l'affichage) (en pixel)
 affPos = np.empty((N, ), dtype=tuple)
 
-#lecture fichiers
-with open("distances92.txt") as f:
-    for _i in range(N):
-        names[_i]= f.readline()[:-1]
-        for _j in range(N):
-            distVille[_i][_j]=float(f.readline())
-with open("populations92.txt") as f:
-    for _i in range(N):
-        pop[_i]=int(f.readline().split(',')[1])
-with open("coordvilles92.txt") as f:
-    for _i in range(N):
-        s = f.readline().split(',')[1:]
-        affPos[_i] = (int(s[0]), int(s[1]))
+def read():
+    #lecture fichiers
+    with open("distances"+fnametxt) as f:
+        for _i in range(N):
+            names[_i]= f.readline()[:-1]
+            for _j in range(N):
+                distVille[_i][_j]=float(f.readline())
+    with open("populations"+fnametxt) as f:
+        for _i in range(N):
+            pop[_i]=int(f.readline().split(',')[1])
+    with open("coordvilles"+fnametxt) as f:
+        for _i in range(N):
+            s = f.readline().split(',')[1:]
+            affPos[_i] = (int(s[0]), int(s[1]))
+read()
 
 #population totale du territoire
 popTot = pop.sum()
@@ -38,13 +56,14 @@ def gamma(alpha, k):
     """nombre maximal de personnes couvertes par un secteur"""
     return (1+alpha)*popTot//k
 
+font = ImageFont.truetype("FreeSans.ttf", size=30)
 def draw(listIm, indSecteurs, numVille, varNames, varVals):
     """crée la représentation graphique de la solution"""
     #une couleur par secteur
     colors = [(255,0,0),(0,255,0),(0,0,255), (128,0,0), (255,0,255), (255,255,0)]
     
     #repart de l'image initiale pour chaque solution
-    im = Image.open("92.png")
+    im = Image.open(fname+".png")
     dr = ImageDraw.Draw(im)
     
     #trace les lignes du secteur vers la ville couverte
@@ -52,24 +71,30 @@ def draw(listIm, indSecteurs, numVille, varNames, varVals):
         dr.line((affPos[i],affPos[numVille[i]]), fill=colors[indSecteurs[i]])
         
     #affiche les variables
-
-    for i, (name, value) in enumerate(zip(varNames, varVals)):
-        dr.text((100,500+15*i), str.ljust(name,5) + str(value), fill=0)
+    for i, name in enumerate(varNames):
+        dr.text((10,500+30*i), name, fill=0, font=font)
+    for i, value in enumerate(varVals):
+        dr.text((100,500+30*i), str(value), fill=0, font=font)
     
     #ajoute l'image à la liste pour la création du gif
     listIm.append(im)
 
 def saveGif(listIm, name, kList, aList):
+    filepath = "output/"+fname+"/"
+    directory = os.path.dirname(filepath)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    
     #sauvegarde les images une par une
     cpt = 0
     for k in kList:
         for a in aList:
-            listIm[cpt].save(("output/"+name + "k" + str(k) + "_a" + str(a)), "PNG")
+            listIm[cpt].save((filepath+name + "k" + str(k) + "_a" + str(int(10*a)) + ".png"), "PNG")
             cpt += 1
     
     #crée aussi un gif
-    listIm[0].save(name + ".gif", format="GIF", loop=9999,
-                   duration=[4000] + [2000] * (len(listIm) - 2) + [4000],
+    listIm[0].save("output/"+name+fname + ".gif", format="GIF", loop=9999,
+                   duration=[2000] + [1000] * (len(listIm) - 2) + [4000],
                    save_all=True, append_images=listIm[1:])
 
 
@@ -114,7 +139,7 @@ def _optimizeFixed(MINMAX, pointsDacces, k, alpha, listIm, f_optf=0):
             obj += distSecteur[i][j] * x[i][j]
     
     if MINMAX:
-        obj *= 1e-4
+        obj *= 1e-2
         obj += maxDist
     
     m.setObjective(obj, GRB.MINIMIZE)
@@ -164,7 +189,7 @@ def _optimizeFixed(MINMAX, pointsDacces, k, alpha, listIm, f_optf=0):
         nomVars = ["k", "a", "val", "dmax"]
         valVars = [k, alpha, round(val,4), dmax]
         if MINMAX:
-            nomVars.append("prix équité")
+            nomVars.append("P.E.")
             valVars.append(prix_equite)
         
         draw(listIm, solSect, solVille, nomVars,valVars)
@@ -212,7 +237,7 @@ def _optimizeFree(MINMAX, k, alpha, listIm, f_optf=0):
             obj += distVille[i][j] * whatSector[i][j]
     
     if MINMAX:
-        obj *= 1e-4
+        obj *= 1e-2
         obj += maxDist
     
     m.setObjective(obj, GRB.MINIMIZE)
@@ -244,7 +269,9 @@ def _optimizeFree(MINMAX, k, alpha, listIm, f_optf=0):
 
     #--------------------RESOLUTION--------------------
     m.optimize()
-    
+    for i in whatSector:
+        for j in i:
+            print(j.X)
     #ville associée à chaque ville
     numVille = [max(colonnes, key=lambda _j: whatSector[i][_j].x) for i in lignes]
     
@@ -257,21 +284,23 @@ def _optimizeFree(MINMAX, k, alpha, listIm, f_optf=0):
     villeToIndSecteur = {val: ind for ind, val, in enumerate(sorted(set(numVille)))}
     indSecteur = [villeToIndSecteur[v] for v in numVille]
 
-    #-----------------PRIX EQUITE------------------
-    print("free" +("max" if MINMAX else "mean"), "k=", k, "a=", alpha, "\tvaleur:", val, "\tdmax:", dmax)
+    print("free" +("max" if MINMAX else "mean"), "k=", k,
+          "a=",alpha, "\tvaleur:", val, "\tdmax:", dmax)
     print("nb variables", len(m.getVars()), " contraintes", len(m.getConstrs()))
     
+    #-----------------PRIX EQUITE------------------
     if MINMAX:
         f_optg = sum(distVille[i][numVille[i]] for i in lignes)
         prix_equite = round(100 - 100 * f_optf / f_optg, 1)
         print("prix équité=",prix_equite)
 
+    #-----------------DESSINE------------------
     if listIm is not None:
         #dessine
         nameVars = ["k", "a", "val", "dmax"]
         valVars = [k, alpha, round(val, 4), dmax]
         if MINMAX:
-            nameVars.append("prix équité")
+            nameVars.append("P.E.")
             valVars.append(prix_equite)
             
         draw(listIm, indSecteur, numVille, nameVars, valVars)
@@ -288,15 +317,15 @@ def optimizeFreeMax(k, alpha, listIm, f_optf):
 def ex12():
     #pour q1 et q2 on fixe quelles villes sont les points d'accès selon la valeur de k
     pointsDacces_k = [np.array(l) for l in
-                      [[], [0], [0, 1], [1, 8, 14], [1, 13, 14, 22], [1, 13, 30, 32, 34]]]
+                      [[], [0], [0, 1], [0, 1], [0,1,2], [1, 13, 30, 32, 34]]]
     
     #listes des images pour créer un gif
     imagesMean = []
     imagesMax = []
     
     #paramètres qui varient
-    kList=[3,4,5]
-    aList=[.1,.2]
+    kList=[2]
+    aList=[.4]
     
     for k in kList:
         for a in aList:
@@ -315,8 +344,8 @@ def ex3():
     """comme ex 12 avec le choix des secteurs variable"""
     imagesMean = []
     imagesMax = []
-    kList=[3,4,5]
-    aList=[.1,.2]
+    kList=[3]
+    aList=[.4]
     for k in kList:
         for a in aList:
             v = optimizeFreeMean(k, a, imagesMean)
@@ -327,7 +356,9 @@ def ex3():
 
 
 def main():
-    ex12()
-    ex3()
+    #if mode[0]:
+    #    ex12()
+    if mode[1]:
+        ex3()
 
 main()
